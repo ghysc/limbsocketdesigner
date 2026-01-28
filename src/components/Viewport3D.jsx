@@ -173,7 +173,7 @@ function Viewport3D() {
 	return (
 		<div className="w-full h-full bg-gray-900 rounded-lg overflow-hidden shadow-lg">
 			<Canvas
-				camera={{ position: [5, 5, 5], fov: 50 }}
+				camera={{ position: [20, 20, 20], fov: 50 }}
 				onPointerMissed={() => setSelectedPrimitive(null)}
 			>
 				<Scene />
