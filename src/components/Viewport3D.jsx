@@ -5,7 +5,6 @@ import useStore from '../stores/useStore';
 
 function Primitive({ primitive, isSelected }) {
   const meshRef = useRef();
-  const transformRef = useRef();
   const updatePrimitive = useStore((state) => state.updatePrimitive);
   const setSelectedPrimitive = useStore((state) => state.setSelectedPrimitive);
   const [transformMode, setTransformMode] = useState('translate');
@@ -21,24 +20,17 @@ function Primitive({ primitive, isSelected }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isSelected]);
 
-  useEffect(() => {
-    if (transformRef.current && meshRef.current) {
-      transformRef.current.attach(meshRef.current);
-    }
-  }, [isSelected]);
-
   const handleTransform = () => {
     if (meshRef.current) {
       updatePrimitive(primitive.id, {
         position: meshRef.current.position.toArray(),
         scale: meshRef.current.scale.toArray(),
-        rotation: meshRef.current.rotation.toArray().slice(0, 3),
       });
     }
   };
 
   return (
-    <group>
+    <>
       <mesh
         ref={meshRef}
         position={primitive.position}
@@ -60,12 +52,12 @@ function Primitive({ primitive, isSelected }) {
       </mesh>
       {isSelected && (
         <TransformControls
-          ref={transformRef}
+          object={meshRef}
           mode={transformMode}
           onObjectChange={handleTransform}
         />
       )}
-    </group>
+    </>
   );
 }
 
@@ -112,9 +104,14 @@ function Scene() {
 }
 
 function Viewport3D() {
+  const setSelectedPrimitive = useStore((state) => state.setSelectedPrimitive);
+
   return (
     <div className="w-full h-full bg-gray-900 rounded-lg overflow-hidden shadow-lg">
-      <Canvas camera={{ position: [5, 5, 5], fov: 50 }}>
+      <Canvas
+        camera={{ position: [5, 5, 5], fov: 50 }}
+        onPointerMissed={() => setSelectedPrimitive(null)}
+      >
         <Scene />
       </Canvas>
     </div>
