@@ -10,13 +10,13 @@ function GridEditor({ title, gridType }) {
 	const clearGrid = useStore((state) => state.clearGrid);
 
 	const [isDrawing, setIsDrawing] = useState(false);
-	const [drawMode, setDrawMode] = useState(true);
+	const [drawMode] = useState(true);
 	const drawnPointsRef = useRef([]);
 	const previousCellsRef = useRef([]);
 
 	const updateConvexShape = (points, shouldFill) => {
 		// Clear previous cells
-		previousCellsRef.current.forEach(cell => {
+		previousCellsRef.current.forEach((cell) => {
 			setGridCell(gridType, cell.row, cell.col, false);
 		});
 
@@ -25,16 +25,34 @@ function GridEditor({ title, gridType }) {
 			return;
 		}
 
+		// Collect all cells that are currently true in the grid
+		const allTrueCells = [];
+		grid.forEach((row, rowIndex) => {
+			row.forEach((cell, colIndex) => {
+				if (cell) {
+					allTrueCells.push({ row: rowIndex, col: colIndex });
+				}
+			});
+		});
+
+		// Combine with newly drawn points
+		const combinedPoints = [...allTrueCells, ...points];
+
+		if (combinedPoints.length === 0) {
+			previousCellsRef.current = [];
+			return;
+		}
+
 		// Find leftmost and rightmost points
 		let minCol = Infinity;
 		let maxCol = -Infinity;
-		points.forEach(p => {
+		combinedPoints.forEach((p) => {
 			minCol = Math.min(minCol, p.col);
 			maxCol = Math.max(maxCol, p.col);
 		});
 
 		// Add points that extend to top of grid (row 0)
-		const extendedPoints = [...points];
+		const extendedPoints = [...combinedPoints];
 		extendedPoints.push({ row: 0, col: minCol });
 		extendedPoints.push({ row: 0, col: maxCol });
 
@@ -45,7 +63,7 @@ function GridEditor({ title, gridType }) {
 		const filledCells = fillPolygon(hull, 20);
 
 		// Update grid
-		filledCells.forEach(cell => {
+		filledCells.forEach((cell) => {
 			setGridCell(gridType, cell.row, cell.col, shouldFill);
 		});
 
@@ -54,7 +72,7 @@ function GridEditor({ title, gridType }) {
 
 	const handleMouseDown = (row, col) => {
 		const currentValue = grid[row][col];
-		setDrawMode(!currentValue);
+		//setDrawMode(!currentValue);
 		setIsDrawing(true);
 		drawnPointsRef.current = [{ row, col }];
 		updateConvexShape(drawnPointsRef.current, !currentValue);
@@ -99,7 +117,7 @@ function GridEditor({ title, gridType }) {
 					onMouseLeave={handleMouseLeave}
 					onMouseUp={handleMouseUp}
 					onDragStart={(e) => e.preventDefault()}
-					style={{ userSelect: 'none' }}
+					style={{ userSelect: "none" }}
 				>
 					{grid.map((row, rowIndex) => (
 						<div key={rowIndex} className="flex">
