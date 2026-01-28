@@ -103,7 +103,9 @@ function GridEditor({ title, gridType }) {
 	return (
 		<div className="flex flex-col">
 			<div className="bg-gray-700 rounded-t-lg px-2 py-1 flex justify-between items-center">
-				<h3 className="font-semibold text-white text-sm">{title}</h3>
+				<h3 className="font-semibold text-white text-sm">
+					{title} of the limb
+				</h3>
 				<button
 					onClick={() => clearGrid(gridType)}
 					className="text-xs px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded"
