@@ -25,8 +25,21 @@ function GridEditor({ title, gridType }) {
 			return;
 		}
 
-		// Compute convex hull
-		const hull = getConvexHull(points);
+		// Find leftmost and rightmost points
+		let minCol = Infinity;
+		let maxCol = -Infinity;
+		points.forEach(p => {
+			minCol = Math.min(minCol, p.col);
+			maxCol = Math.max(maxCol, p.col);
+		});
+
+		// Add points that extend to top of grid (row 0)
+		const extendedPoints = [...points];
+		extendedPoints.push({ row: 0, col: minCol });
+		extendedPoints.push({ row: 0, col: maxCol });
+
+		// Compute convex hull with extended points
+		const hull = getConvexHull(extendedPoints);
 
 		// Fill the convex polygon
 		const filledCells = fillPolygon(hull, 20);
