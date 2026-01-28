@@ -98,6 +98,8 @@ function GridEditor({ title, gridType }) {
 					className="border-2 border-black bg-gray-200"
 					onMouseLeave={handleMouseLeave}
 					onMouseUp={handleMouseUp}
+					onDragStart={(e) => e.preventDefault()}
+					style={{ userSelect: 'none' }}
 				>
 					{grid.map((row, rowIndex) => (
 						<div key={rowIndex} className="flex">
