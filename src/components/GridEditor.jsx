@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import useStore from "../stores/useStore";
+import { getConvexHull, fillPolygon } from "../utils/convexHull";
 
 function GridEditor({ title, gridType }) {
 	const grid = useStore((state) =>
@@ -9,23 +10,63 @@ function GridEditor({ title, gridType }) {
 	const clearGrid = useStore((state) => state.clearGrid);
 
 	const [isDrawing, setIsDrawing] = useState(false);
-	const [drawMode, setDrawMode] = useState(true); // true = fill, false = erase
+	const [drawMode, setDrawMode] = useState(true);
+	const drawnPointsRef = useRef([]);
+	const previousCellsRef = useRef([]);
+
+	const updateConvexShape = (points, shouldFill) => {
+		// Clear previous cells
+		previousCellsRef.current.forEach(cell => {
+			setGridCell(gridType, cell.row, cell.col, false);
+		});
+
+		if (points.length === 0) {
+			previousCellsRef.current = [];
+			return;
+		}
+
+		// Compute convex hull
+		const hull = getConvexHull(points);
+
+		// Fill the convex polygon
+		const filledCells = fillPolygon(hull, 20);
+
+		// Update grid
+		filledCells.forEach(cell => {
+			setGridCell(gridType, cell.row, cell.col, shouldFill);
+		});
+
+		previousCellsRef.current = filledCells;
+	};
 
 	const handleMouseDown = (row, col) => {
 		const currentValue = grid[row][col];
-		setDrawMode(!currentValue); // If cell is empty, we'll fill. If filled, we'll erase
-		setGridCell(gridType, row, col, !currentValue);
+		setDrawMode(!currentValue);
 		setIsDrawing(true);
+		drawnPointsRef.current = [{ row, col }];
+		updateConvexShape(drawnPointsRef.current, !currentValue);
 	};
 
 	const handleMouseEnter = (row, col) => {
 		if (isDrawing) {
-			setGridCell(gridType, row, col, drawMode);
+			// Add point to list
+			drawnPointsRef.current.push({ row, col });
+
+			// Update convex shape
+			updateConvexShape(drawnPointsRef.current, drawMode);
 		}
 	};
 
 	const handleMouseUp = () => {
 		setIsDrawing(false);
+		drawnPointsRef.current = [];
+		previousCellsRef.current = [];
+	};
+
+	const handleMouseLeave = () => {
+		setIsDrawing(false);
+		drawnPointsRef.current = [];
+		previousCellsRef.current = [];
 	};
 
 	return (
@@ -42,7 +83,7 @@ function GridEditor({ title, gridType }) {
 			<div className="flex justify-center items-center bg-gray-200 p-2">
 				<div
 					className="border-2 border-black bg-gray-200"
-					onMouseLeave={handleMouseUp}
+					onMouseLeave={handleMouseLeave}
 					onMouseUp={handleMouseUp}
 				>
 					{grid.map((row, rowIndex) => (
