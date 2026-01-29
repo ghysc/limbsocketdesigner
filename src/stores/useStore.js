@@ -46,6 +46,10 @@ const useStore = create((set) => ({
 	inflation: 0,
 	setInflation: (value) => set({ inflation: value }),
 
+	// Smooth normals for better lighting
+	smoothNormals: true,
+	setSmoothNormals: (value) => set({ smoothNormals: value }),
+
 	// 3D Mesh data
 	generatedMesh: null,
 	setGeneratedMesh: (mesh) => set({ generatedMesh: mesh }),

@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { MarchingCubes } from "three/addons/objects/MarchingCubes.js";
+import * as BufferGeometryUtils from "three/addons/utils/BufferGeometryUtils.js";
 
 /**
  * Creates a cube at the specified position
@@ -251,6 +252,7 @@ export function generateLimbGeometrySmooth(
 	gridSize = 20,
 	cellSize = 1,
 	inflation = 0,
+	smoothNormals = false,
 ) {
 	const heightScale = gridSize * cellSize;
 
@@ -305,8 +307,11 @@ export function generateLimbGeometrySmooth(
 	const mc = new MarchingCubes(resolution, dummyMaterial, true, true, 100000);
 
 	// Three.js MC: values > isolation are "inside"
-	// We set isolation to a threshold, and fill field with distance-based values
-	mc.isolation = inflation;
+	// fieldValue = shellThickness - minDist
+	// surface at: minDist = shellThickness - isolation
+	// So negative isolation = bigger mesh, positive = smaller
+	// We want positive inflation = bigger, so use -inflation
+	mc.isolation = -inflation;
 	mc.reset();
 
 	// Normalize Y to be in similar scale as row/col for distance calculation
@@ -333,8 +338,8 @@ export function generateLimbGeometrySmooth(
 
 				// Convert distance to field value
 				// High value = inside, low value = outside
-				// Shell thickness of ~2 grid units
-				const shellThickness = 2.0;
+				// Shell thickness controls default surface distance from voxel skeleton
+				const shellThickness = 1.2;
 				const fieldValue = shellThickness - minDist;
 
 				mc.setCell(ix, iy, iz, fieldValue);
@@ -376,7 +381,13 @@ export function generateLimbGeometrySmooth(
 		vertices[i + 2] = vertices[i + 2] * worldScaleZ + worldOffsetZ;
 	}
 
-	mcGeometry.computeVertexNormals();
+	// Smooth normals: merge duplicate vertices so normals interpolate across faces
+	if (smoothNormals) {
+		const mergedGeometry = BufferGeometryUtils.mergeVertices(mcGeometry);
+		mergedGeometry.computeVertexNormals();
+		return mergedGeometry;
+	}
 
+	mcGeometry.computeVertexNormals();
 	return mcGeometry;
 }

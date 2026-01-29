@@ -11,6 +11,8 @@ function ControlPanel() {
 	const setLimbVisibility = useStore((state) => state.setLimbVisibility);
 	const inflation = useStore((state) => state.inflation);
 	const setInflation = useStore((state) => state.setInflation);
+	const smoothNormals = useStore((state) => state.smoothNormals);
+	const setSmoothNormals = useStore((state) => state.setSmoothNormals);
 
 	const selectedPrimitive = primitives.find(
 		(p) => p.id === selectedPrimitiveId,
@@ -96,6 +98,15 @@ function ControlPanel() {
 								onChange={(e) => setInflation(parseFloat(e.target.value))}
 								className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer"
 							/>
+							<label className="flex items-center gap-2 mt-3 cursor-pointer">
+								<input
+									type="checkbox"
+									checked={smoothNormals}
+									onChange={(e) => setSmoothNormals(e.target.checked)}
+									className="w-4 h-4 rounded"
+								/>
+								<span className="text-sm text-gray-600">Smooth Lighting</span>
+							</label>
 						</div>
 					)}
 				</div>

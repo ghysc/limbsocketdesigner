@@ -72,6 +72,7 @@ function LimbMesh() {
 	const slices = useStore((state) => state.slices);
 	const limbVisibility = useStore((state) => state.limbVisibility);
 	const inflation = useStore((state) => state.inflation) || 0;
+	const smoothNormals = useStore((state) => state.smoothNormals);
 
 	// Compute geometry directly (useMemo pattern for expensive computations)
 	const geometry = useMemo(() => {
@@ -81,7 +82,7 @@ function LimbMesh() {
 			}
 
 			if (limbVisibility === "smooth") {
-				return generateLimbGeometrySmooth(slices, 20, 1, inflation);
+				return generateLimbGeometrySmooth(slices, 20, 1, inflation, smoothNormals);
 			}
 
 			// Default: voxel mode
@@ -90,7 +91,7 @@ function LimbMesh() {
 			console.error("Error generating limb geometry:", error);
 			return null;
 		}
-	}, [slices, limbVisibility, inflation]);
+	}, [slices, limbVisibility, inflation, smoothNormals]);
 
 	if (!geometry) return null;
 
