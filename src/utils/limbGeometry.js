@@ -50,8 +50,55 @@ function createCube(vertices, indices, vertexIndex, cx, cy, cz, hs) {
 }
 
 /**
- * Generates 3D voxel geometry from slices using loft interpolation
+ * Collect all active cells from a grid
+ */
+function collectActiveCells(grid, gridSize) {
+	const cells = [];
+	for (let row = 0; row < gridSize; row++) {
+		for (let col = 0; col < gridSize; col++) {
+			if (grid[row]?.[col]) {
+				cells.push({ row, col });
+			}
+		}
+	}
+	return cells;
+}
+
+/**
+ * Find the closest cell in targetCells to the given cell
+ */
+function findClosestCell(cell, targetCells) {
+	if (targetCells.length === 0) return null;
+
+	let closest = targetCells[0];
+	let minDist = (cell.row - closest.row) ** 2 + (cell.col - closest.col) ** 2;
+
+	for (let i = 1; i < targetCells.length; i++) {
+		const target = targetCells[i];
+		const dist = (cell.row - target.row) ** 2 + (cell.col - target.col) ** 2;
+		if (dist < minDist) {
+			minDist = dist;
+			closest = target;
+		}
+	}
+	return closest;
+}
+
+/**
+ * Linear interpolation
+ */
+function lerp(a, b, t) {
+	return a + (b - a) * t;
+}
+
+/**
+ * Generates 3D voxel geometry from slices using organic loft interpolation
  * Each slice represents a cross-section at a certain height
+ *
+ * Rules:
+ * - If only ONE slice has content: display a single layer of voxels
+ * - If MULTIPLE slices have content: organic interpolation where each active cell
+ *   connects to the closest active cell in the next slice
  *
  * @param {Array} slices - Array of slice objects { id, height, grid, label }
  * @param {number} gridSize - Size of each grid (default 20)
@@ -63,15 +110,31 @@ export function generateLimbGeometry(slices, gridSize = 20, cellSize = 1) {
 	const indices = [];
 	let vertexIndex = 0;
 
+	// Track created voxels to avoid duplicates
+	const createdVoxels = new Set();
+
+	const addVoxel = (row, col, y) => {
+		const key = `${Math.round(row)},${Math.round(col)},${y.toFixed(3)}`;
+		if (createdVoxels.has(key)) return;
+		createdVoxels.add(key);
+
+		const cx = (Math.round(col) - gridSize / 2) * cellSize * 0.5;
+		const cz = (Math.round(row) - gridSize / 2) * cellSize * 0.5;
+		const hs = cellSize * 0.25;
+
+		createCube(vertices, indices, vertexIndex, cx, y, cz, hs);
+		vertexIndex += 8;
+	};
+
 	// Sort slices by height (descending - from top to bottom)
 	const sortedSlices = [...slices].sort((a, b) => b.height - a.height);
 
-	// Check if any slice has content
-	const hasContent = sortedSlices.some((slice) =>
+	// Filter slices that have content
+	const slicesWithContent = sortedSlices.filter((slice) =>
 		slice.grid.some((row) => row.some((cell) => cell)),
 	);
 
-	if (!hasContent) {
+	if (slicesWithContent.length === 0) {
 		// Return empty geometry
 		vertices.push(0, 0, 0);
 		geometry.setAttribute(
@@ -81,38 +144,64 @@ export function generateLimbGeometry(slices, gridSize = 20, cellSize = 1) {
 		return geometry;
 	}
 
-	const hs = cellSize * 0.25; // Half size of voxel
-	const heightScale = gridSize * cellSize * 0.5; // Scale factor for height
+	const heightScale = gridSize * cellSize * 0.5;
 
-	// For each pair of consecutive slices
-	for (let s = 0; s < sortedSlices.length - 1; s++) {
-		const slice1 = sortedSlices[s]; // Upper slice
-		const slice2 = sortedSlices[s + 1]; // Lower slice
+	// Case 1: Only ONE slice has content - single layer of voxels
+	if (slicesWithContent.length === 1) {
+		const slice = slicesWithContent[0];
+		const y = slice.height * heightScale;
 
-		// Number of interpolation steps between slices
-		const steps = 5;
+		for (let row = 0; row < gridSize; row++) {
+			for (let col = 0; col < gridSize; col++) {
+				if (slice.grid[row]?.[col]) {
+					addVoxel(row, col, y);
+				}
+			}
+		}
+	} else {
+		// Case 2: Multiple slices - organic interpolation
+		const steps = 10; // Number of interpolation steps between slices
 
-		for (let step = 0; step <= steps; step++) {
-			const t = step / steps;
-			// Interpolate height between the two slices
-			const y = (slice1.height + t * (slice2.height - slice1.height)) * heightScale;
+		// For each pair of consecutive slices with content
+		for (let s = 0; s < slicesWithContent.length - 1; s++) {
+			const slice1 = slicesWithContent[s]; // Upper slice
+			const slice2 = slicesWithContent[s + 1]; // Lower slice
 
-			// For each cell in the grid
-			for (let row = 0; row < gridSize; row++) {
-				for (let col = 0; col < gridSize; col++) {
-					const active1 = slice1.grid[row]?.[col];
-					const active2 = slice2.grid[row]?.[col];
+			const cells1 = collectActiveCells(slice1.grid, gridSize);
+			const cells2 = collectActiveCells(slice2.grid, gridSize);
 
-					// Create voxel if active in at least one slice (union)
-					if (active1 || active2) {
-						// Calculate cube center position
-						// Row maps to Z (depth), Col maps to X (width)
-						const cx = (col - gridSize / 2) * cellSize * 0.5;
-						const cz = (row - gridSize / 2) * cellSize * 0.5;
+			const height1 = slice1.height * heightScale;
+			const height2 = slice2.height * heightScale;
 
-						createCube(vertices, indices, vertexIndex, cx, y, cz, hs);
-						vertexIndex += 8;
-					}
+			// From top to bottom: each cell in slice1 connects to closest in slice2
+			for (const cell1 of cells1) {
+				const cell2 = findClosestCell(cell1, cells2);
+				if (!cell2) continue;
+
+				// Interpolate between cell1 and cell2
+				for (let step = 0; step <= steps; step++) {
+					const t = step / steps;
+					const y = lerp(height1, height2, t);
+					const row = lerp(cell1.row, cell2.row, t);
+					const col = lerp(cell1.col, cell2.col, t);
+
+					addVoxel(row, col, y);
+				}
+			}
+
+			// From bottom to top: ensure cells in slice2 are also connected
+			for (const cell2 of cells2) {
+				const cell1 = findClosestCell(cell2, cells1);
+				if (!cell1) continue;
+
+				// Interpolate between cell1 and cell2
+				for (let step = 0; step <= steps; step++) {
+					const t = step / steps;
+					const y = lerp(height1, height2, t);
+					const row = lerp(cell1.row, cell2.row, t);
+					const col = lerp(cell1.col, cell2.col, t);
+
+					addVoxel(row, col, y);
 				}
 			}
 		}
