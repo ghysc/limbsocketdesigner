@@ -144,7 +144,7 @@ export function generateLimbGeometry(slices, gridSize = 20, cellSize = 1) {
 		return geometry;
 	}
 
-	const heightScale = gridSize * cellSize * 0.5;
+	const heightScale = gridSize * cellSize;
 
 	// Case 1: Only ONE slice has content - single layer of voxels
 	if (slicesWithContent.length === 1) {

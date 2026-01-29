@@ -9,10 +9,10 @@ const createEmptyGrid = () => {
 const useStore = create((set) => ({
 	// Slices data (from top of residual limb to extremity)
 	slices: [
-		{ id: 0, height: 0.75, grid: createEmptyGrid(), label: "Haut" },
-		{ id: 1, height: 0.5, grid: createEmptyGrid(), label: "Milieu-haut" },
-		{ id: 2, height: 0.25, grid: createEmptyGrid(), label: "Milieu-bas" },
-		{ id: 3, height: 0, grid: createEmptyGrid(), label: "Extrémité" },
+		{ id: 0, height: 1, grid: createEmptyGrid(), label: "Top" },
+		{ id: 1, height: 0.75, grid: createEmptyGrid(), label: "Mid-top" },
+		{ id: 2, height: 0.5, grid: createEmptyGrid(), label: "Mid-bottom" },
+		{ id: 3, height: 0.25, grid: createEmptyGrid(), label: "Extremity" },
 	],
 
 	// Update a cell in a specific slice
