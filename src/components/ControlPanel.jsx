@@ -9,6 +9,8 @@ function ControlPanel() {
 	const setSelectedPrimitive = useStore((state) => state.setSelectedPrimitive);
 	const limbVisibility = useStore((state) => state.limbVisibility);
 	const setLimbVisibility = useStore((state) => state.setLimbVisibility);
+	const inflation = useStore((state) => state.inflation);
+	const setInflation = useStore((state) => state.setInflation);
 
 	const selectedPrimitive = primitives.find(
 		(p) => p.id === selectedPrimitiveId,
@@ -77,6 +79,25 @@ function ControlPanel() {
 							Smooth
 						</button>
 					</div>
+					{limbVisibility === "smooth" && (
+						<div className="mt-3">
+							<div className="flex justify-between items-center mb-1">
+								<label className="text-sm text-gray-600">Inflation</label>
+								<span className="text-sm font-medium text-gray-700">
+									{inflation.toFixed(1)}
+								</span>
+							</div>
+							<input
+								type="range"
+								min="0"
+								max="2"
+								step="0.1"
+								value={inflation}
+								onChange={(e) => setInflation(parseFloat(e.target.value))}
+								className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer"
+							/>
+						</div>
+					)}
 				</div>
 			</div>
 

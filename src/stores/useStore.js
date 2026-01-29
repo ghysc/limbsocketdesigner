@@ -42,6 +42,10 @@ const useStore = create((set) => ({
 	limbVisibility: "voxel", // 'none', 'voxel', 'smooth'
 	setLimbVisibility: (visibility) => set({ limbVisibility: visibility }),
 
+	// Inflation for smooth mode (socket creation)
+	inflation: 0,
+	setInflation: (value) => set({ inflation: value }),
+
 	// 3D Mesh data
 	generatedMesh: null,
 	setGeneratedMesh: (mesh) => set({ generatedMesh: mesh }),

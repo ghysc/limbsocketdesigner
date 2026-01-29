@@ -1,9 +1,12 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Grid, TransformControls } from "@react-three/drei";
 import * as THREE from "three";
 import useStore from "../stores/useStore";
-import { generateLimbGeometry } from "../utils/limbGeometry";
+import {
+	generateLimbGeometry,
+	generateLimbGeometrySmooth,
+} from "../utils/limbGeometry";
 
 function Primitive({ primitive, isSelected }) {
 	const meshRef = useRef();
@@ -68,22 +71,26 @@ function Primitive({ primitive, isSelected }) {
 function LimbMesh() {
 	const slices = useStore((state) => state.slices);
 	const limbVisibility = useStore((state) => state.limbVisibility);
-	const [geometry, setGeometry] = useState(null);
+	const inflation = useStore((state) => state.inflation) || 0;
 
-	useEffect(() => {
+	// Compute geometry directly (useMemo pattern for expensive computations)
+	const geometry = useMemo(() => {
 		try {
-			let newGeometry = null;
-
-			if (limbVisibility !== "none") {
-				// Generate voxel geometry from slices
-				newGeometry = generateLimbGeometry(slices, 20, 1);
+			if (limbVisibility === "none") {
+				return null;
 			}
-			setGeometry(newGeometry);
+
+			if (limbVisibility === "smooth") {
+				return generateLimbGeometrySmooth(slices, 20, 1, inflation);
+			}
+
+			// Default: voxel mode
+			return generateLimbGeometry(slices, 20, 1);
 		} catch (error) {
 			console.error("Error generating limb geometry:", error);
-			setGeometry(null);
+			return null;
 		}
-	}, [slices, limbVisibility]);
+	}, [slices, limbVisibility, inflation]);
 
 	if (!geometry) return null;
 

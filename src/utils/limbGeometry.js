@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { MarchingCubes } from "three/addons/objects/MarchingCubes.js";
 
 /**
  * Creates a cube at the specified position
@@ -92,38 +93,25 @@ function lerp(a, b, t) {
 }
 
 /**
- * Generates 3D voxel geometry from slices using organic loft interpolation
- * Each slice represents a cross-section at a certain height
- *
- * Rules:
- * - If only ONE slice has content: display a single layer of voxels
- * - If MULTIPLE slices have content: organic interpolation where each active cell
- *   connects to the closest active cell in the next slice
+ * Builds a Map of all occupied voxel positions from slices
+ * Used by both generateLimbGeometry (voxel) and generateLimbGeometrySmooth (SDF)
  *
  * @param {Array} slices - Array of slice objects { id, height, grid, label }
  * @param {number} gridSize - Size of each grid (default 20)
- * @param {number} cellSize - Size of each cell (default 1)
+ * @param {number} heightScale - Scale factor for height
+ * @returns {Map} Map of voxel keys to {row, col, y} objects
  */
-export function generateLimbGeometry(slices, gridSize = 20, cellSize = 1) {
-	const geometry = new THREE.BufferGeometry();
-	const vertices = [];
-	const indices = [];
-	let vertexIndex = 0;
-
-	// Track created voxels to avoid duplicates
-	const createdVoxels = new Set();
+function buildOccupiedVoxels(slices, gridSize, heightScale) {
+	const voxelMap = new Map();
 
 	const addVoxel = (row, col, y) => {
-		const key = `${Math.round(row)},${Math.round(col)},${y.toFixed(3)}`;
-		if (createdVoxels.has(key)) return;
-		createdVoxels.add(key);
-
-		const cx = (Math.round(col) - gridSize / 2) * cellSize * 0.5;
-		const cz = (Math.round(row) - gridSize / 2) * cellSize * 0.5;
-		const hs = cellSize * 0.25;
-
-		createCube(vertices, indices, vertexIndex, cx, y, cz, hs);
-		vertexIndex += 8;
+		const r = Math.round(row);
+		const c = Math.round(col);
+		const yRounded = Math.round(y * 1000) / 1000;
+		const key = `${r},${c},${yRounded}`;
+		if (!voxelMap.has(key)) {
+			voxelMap.set(key, { row: r, col: c, y: yRounded });
+		}
 	};
 
 	// Sort slices by height (descending - from top to bottom)
@@ -135,16 +123,8 @@ export function generateLimbGeometry(slices, gridSize = 20, cellSize = 1) {
 	);
 
 	if (slicesWithContent.length === 0) {
-		// Return empty geometry
-		vertices.push(0, 0, 0);
-		geometry.setAttribute(
-			"position",
-			new THREE.BufferAttribute(new Float32Array(vertices), 3),
-		);
-		return geometry;
+		return voxelMap;
 	}
-
-	const heightScale = gridSize * cellSize;
 
 	// Case 1: Only ONE slice has content - single layer of voxels
 	if (slicesWithContent.length === 1) {
@@ -160,12 +140,11 @@ export function generateLimbGeometry(slices, gridSize = 20, cellSize = 1) {
 		}
 	} else {
 		// Case 2: Multiple slices - organic interpolation
-		const steps = 10; // Number of interpolation steps between slices
+		const steps = 10;
 
-		// For each pair of consecutive slices with content
 		for (let s = 0; s < slicesWithContent.length - 1; s++) {
-			const slice1 = slicesWithContent[s]; // Upper slice
-			const slice2 = slicesWithContent[s + 1]; // Lower slice
+			const slice1 = slicesWithContent[s];
+			const slice2 = slicesWithContent[s + 1];
 
 			const cells1 = collectActiveCells(slice1.grid, gridSize);
 			const cells2 = collectActiveCells(slice2.grid, gridSize);
@@ -173,43 +152,75 @@ export function generateLimbGeometry(slices, gridSize = 20, cellSize = 1) {
 			const height1 = slice1.height * heightScale;
 			const height2 = slice2.height * heightScale;
 
-			// From top to bottom: each cell in slice1 connects to closest in slice2
+			// From top to bottom
 			for (const cell1 of cells1) {
 				const cell2 = findClosestCell(cell1, cells2);
 				if (!cell2) continue;
 
-				// Interpolate between cell1 and cell2
 				for (let step = 0; step <= steps; step++) {
 					const t = step / steps;
 					const y = lerp(height1, height2, t);
 					const row = lerp(cell1.row, cell2.row, t);
 					const col = lerp(cell1.col, cell2.col, t);
-
 					addVoxel(row, col, y);
 				}
 			}
 
-			// From bottom to top: ensure cells in slice2 are also connected
+			// From bottom to top
 			for (const cell2 of cells2) {
 				const cell1 = findClosestCell(cell2, cells1);
 				if (!cell1) continue;
 
-				// Interpolate between cell1 and cell2
 				for (let step = 0; step <= steps; step++) {
 					const t = step / steps;
 					const y = lerp(height1, height2, t);
 					const row = lerp(cell1.row, cell2.row, t);
 					const col = lerp(cell1.col, cell2.col, t);
-
 					addVoxel(row, col, y);
 				}
 			}
 		}
 	}
 
-	// Handle case where no vertices were created
-	if (vertices.length === 0) {
+	return voxelMap;
+}
+
+/**
+ * Generates 3D voxel geometry from slices using organic loft interpolation
+ * Each slice represents a cross-section at a certain height
+ *
+ * @param {Array} slices - Array of slice objects { id, height, grid, label }
+ * @param {number} gridSize - Size of each grid (default 20)
+ * @param {number} cellSize - Size of each cell (default 1)
+ */
+export function generateLimbGeometry(slices, gridSize = 20, cellSize = 1) {
+	const geometry = new THREE.BufferGeometry();
+	const vertices = [];
+	const indices = [];
+
+	const heightScale = gridSize * cellSize;
+	const hs = cellSize * 0.25;
+
+	// Build occupied voxels using the common function
+	const voxelMap = buildOccupiedVoxels(slices, gridSize, heightScale);
+
+	if (voxelMap.size === 0) {
 		vertices.push(0, 0, 0);
+		geometry.setAttribute(
+			"position",
+			new THREE.BufferAttribute(new Float32Array(vertices), 3),
+		);
+		return geometry;
+	}
+
+	// Create cubes for each voxel
+	let vertexIndex = 0;
+	for (const voxel of voxelMap.values()) {
+		const cx = (voxel.col - gridSize / 2) * cellSize * 0.5;
+		const cz = (voxel.row - gridSize / 2) * cellSize * 0.5;
+
+		createCube(vertices, indices, vertexIndex, cx, voxel.y, cz, hs);
+		vertexIndex += 8;
 	}
 
 	geometry.setAttribute(
@@ -227,1091 +238,144 @@ export function generateLimbGeometry(slices, gridSize = 20, cellSize = 1) {
 }
 
 /**
- * Marching cubes triangle lookup table
- */
-const MARCHING_CUBES_TABLE = [
-	[],
-	[[0, 8, 3]],
-	[[0, 1, 9]],
-	[
-		[1, 8, 3],
-		[9, 8, 1],
-	],
-	[[1, 2, 10]],
-	[
-		[0, 8, 3],
-		[1, 2, 10],
-	],
-	[
-		[9, 2, 10],
-		[0, 2, 9],
-	],
-	[
-		[2, 8, 3],
-		[2, 10, 8],
-		[10, 9, 8],
-	],
-	[[3, 11, 2]],
-	[
-		[0, 11, 2],
-		[8, 11, 0],
-	],
-	[
-		[1, 9, 0],
-		[2, 3, 11],
-	],
-	[
-		[1, 11, 2],
-		[1, 9, 11],
-		[9, 8, 11],
-	],
-	[
-		[3, 10, 1],
-		[11, 10, 3],
-	],
-	[
-		[0, 10, 1],
-		[0, 8, 10],
-		[8, 11, 10],
-	],
-	[
-		[3, 9, 0],
-		[3, 11, 9],
-		[11, 10, 9],
-	],
-	[
-		[9, 8, 10],
-		[10, 8, 11],
-	],
-	[[4, 7, 8]],
-	[
-		[4, 3, 0],
-		[7, 3, 4],
-	],
-	[
-		[0, 1, 9],
-		[8, 4, 7],
-	],
-	[
-		[4, 1, 9],
-		[4, 7, 1],
-		[7, 3, 1],
-	],
-	[
-		[1, 2, 10],
-		[8, 4, 7],
-	],
-	[
-		[3, 4, 7],
-		[3, 0, 4],
-		[1, 2, 10],
-	],
-	[
-		[9, 2, 10],
-		[9, 0, 2],
-		[8, 4, 7],
-	],
-	[
-		[2, 10, 9],
-		[2, 9, 7],
-		[2, 7, 3],
-		[7, 4, 9],
-	],
-	[
-		[8, 4, 7],
-		[3, 11, 2],
-	],
-	[
-		[11, 4, 7],
-		[11, 2, 4],
-		[2, 0, 4],
-	],
-	[
-		[9, 0, 1],
-		[8, 4, 7],
-		[2, 3, 11],
-	],
-	[
-		[4, 7, 11],
-		[9, 4, 11],
-		[9, 11, 2],
-		[9, 2, 1],
-	],
-	[
-		[3, 10, 1],
-		[3, 11, 10],
-		[7, 8, 4],
-	],
-	[
-		[1, 11, 10],
-		[1, 4, 11],
-		[1, 0, 4],
-		[7, 11, 4],
-	],
-	[
-		[4, 8, 0],
-		[7, 11, 10],
-		[1, 9, 0],
-		[11, 10, 9],
-		[3, 11, 9],
-		[4, 7, 9],
-	],
-	[
-		[4, 11, 7],
-		[9, 11, 4],
-		[9, 10, 11],
-		[9, 1, 10],
-	],
-	[
-		[1, 4, 0],
-		[5, 4, 1],
-	],
-	[
-		[1, 5, 4],
-		[1, 4, 8],
-		[1, 8, 3],
-	],
-	[
-		[5, 9, 4],
-		[0, 9, 5],
-	],
-	[
-		[0, 5, 4],
-		[1, 5, 4],
-		[8, 3, 5],
-		[3, 4, 5],
-	],
-	[
-		[5, 4, 1],
-		[2, 10, 1],
-	],
-	[
-		[8, 3, 0],
-		[5, 4, 1],
-		[2, 10, 1],
-	],
-	[
-		[4, 5, 9],
-		[10, 2, 0],
-		[10, 0, 9],
-	],
-	[
-		[5, 3, 2],
-		[4, 5, 2],
-		[10, 2, 8],
-		[8, 2, 5],
-		[8, 5, 3],
-	],
-	[
-		[4, 1, 5],
-		[2, 3, 11],
-	],
-	[
-		[11, 5, 2],
-		[8, 5, 0],
-		[3, 11, 5],
-		[4, 8, 5],
-		[2, 5, 0],
-	],
-	[
-		[11, 4, 5],
-		[9, 4, 5],
-		[9, 5, 2],
-		[9, 2, 1],
-		[11, 9, 4],
-		[3, 11, 9],
-	],
-	[
-		[2, 5, 9],
-		[2, 9, 10],
-		[2, 4, 9],
-		[2, 11, 4],
-		[8, 4, 11],
-	],
-	[
-		[5, 10, 1],
-		[5, 4, 10],
-		[7, 10, 4],
-	],
-	[
-		[10, 5, 4],
-		[2, 10, 4],
-		[0, 2, 4],
-		[3, 0, 4],
-		[7, 4, 3],
-	],
-	[
-		[0, 4, 5],
-		[1, 4, 5],
-		[1, 5, 10],
-		[7, 4, 1],
-		[3, 7, 1],
-	],
-	[
-		[4, 5, 7],
-		[5, 10, 7],
-		[10, 1, 7],
-		[1, 3, 7],
-	],
-	[
-		[7, 4, 5],
-		[3, 7, 5],
-		[3, 5, 1],
-		[11, 3, 5],
-	],
-	[
-		[1, 11, 5],
-		[1, 5, 4],
-		[5, 11, 3],
-		[5, 3, 0],
-		[5, 0, 4],
-	],
-	[
-		[0, 5, 4],
-		[0, 9, 5],
-		[7, 3, 11],
-	],
-	[
-		[4, 5, 9],
-		[7, 4, 11],
-	],
-	[
-		[9, 7, 8],
-		[5, 9, 7],
-	],
-	[
-		[9, 3, 0],
-		[9, 7, 3],
-		[5, 9, 7],
-	],
-	[
-		[0, 7, 8],
-		[0, 1, 7],
-		[1, 5, 7],
-	],
-	[
-		[1, 7, 3],
-		[1, 5, 7],
-	],
-	[
-		[9, 7, 8],
-		[9, 5, 7],
-		[10, 1, 2],
-	],
-	[
-		[10, 1, 2],
-		[5, 0, 9],
-		[5, 3, 0],
-		[5, 7, 3],
-	],
-	[
-		[8, 0, 2],
-		[8, 2, 5],
-		[8, 5, 7],
-		[10, 5, 2],
-	],
-	[
-		[2, 10, 5],
-		[2, 5, 3],
-		[3, 5, 7],
-	],
-	[
-		[7, 8, 9],
-		[5, 7, 9],
-		[5, 9, 2],
-		[5, 2, 11],
-		[5, 11, 3],
-	],
-	[
-		[9, 2, 0],
-		[9, 7, 2],
-		[9, 5, 7],
-		[11, 2, 7],
-	],
-	[
-		[0, 3, 8],
-		[1, 2, 11],
-		[5, 7, 9],
-	],
-	[
-		[5, 1, 9],
-		[5, 7, 1],
-		[7, 3, 1],
-		[11, 2, 7],
-	],
-	[
-		[8, 1, 3],
-		[8, 5, 1],
-		[8, 9, 5],
-		[10, 1, 5],
-		[11, 3, 5],
-	],
-	[
-		[0, 9, 1],
-		[5, 11, 3],
-	],
-	[
-		[8, 0, 5],
-		[0, 1, 5],
-		[5, 1, 10],
-	],
-	[[10, 5, 1]],
-	[
-		[5, 8, 9],
-		[5, 7, 8],
-	],
-	[
-		[9, 7, 0],
-		[9, 5, 7],
-		[0, 7, 3],
-	],
-	[
-		[0, 5, 8],
-		[0, 1, 5],
-		[8, 5, 7],
-	],
-	[
-		[1, 5, 3],
-		[3, 5, 7],
-	],
-	[
-		[5, 8, 9],
-		[5, 7, 8],
-		[1, 2, 10],
-	],
-	[
-		[9, 7, 0],
-		[9, 5, 7],
-		[10, 1, 2],
-		[0, 7, 3],
-	],
-	[
-		[10, 8, 0],
-		[10, 5, 8],
-		[1, 10, 0],
-		[7, 8, 5],
-	],
-	[
-		[10, 5, 2],
-		[1, 10, 5],
-		[5, 7, 3],
-		[5, 3, 2],
-	],
-	[
-		[2, 5, 8],
-		[2, 8, 9],
-		[2, 9, 10],
-		[5, 7, 8],
-	],
-	[
-		[9, 2, 0],
-		[10, 5, 2],
-	],
-	[
-		[0, 3, 8],
-		[1, 2, 10],
-	],
-	[[1, 2, 10]],
-	[[7, 5, 4]],
-	[
-		[7, 4, 8],
-		[0, 8, 3],
-	],
-	[
-		[0, 9, 1],
-		[8, 4, 7],
-	],
-	[
-		[4, 3, 1],
-		[4, 1, 9],
-		[4, 7, 3],
-	],
-	[
-		[1, 2, 10],
-		[8, 4, 7],
-	],
-	[
-		[3, 4, 7],
-		[0, 4, 3],
-		[1, 2, 10],
-	],
-	[
-		[9, 4, 7],
-		[9, 7, 10],
-		[9, 10, 2],
-		[0, 9, 2],
-	],
-	[
-		[2, 10, 9],
-		[3, 4, 7],
-		[3, 7, 9],
-		[3, 9, 2],
-	],
-	[
-		[8, 4, 7],
-		[3, 2, 11],
-	],
-	[
-		[4, 7, 11],
-		[0, 4, 11],
-		[0, 11, 2],
-	],
-	[
-		[9, 0, 1],
-		[4, 7, 8],
-		[2, 3, 11],
-	],
-	[
-		[1, 2, 11],
-		[1, 11, 9],
-		[4, 7, 11],
-		[9, 11, 4],
-	],
-	[
-		[3, 10, 1],
-		[3, 11, 10],
-		[7, 8, 4],
-	],
-	[
-		[1, 11, 10],
-		[0, 4, 7],
-		[0, 7, 3],
-		[0, 11, 4],
-		[3, 11, 0],
-	],
-	[
-		[4, 8, 0],
-		[10, 3, 11],
-		[10, 9, 3],
-		[10, 1, 9],
-		[4, 7, 10],
-		[0, 10, 3],
-	],
-	[
-		[4, 10, 9],
-		[4, 7, 10],
-		[7, 11, 10],
-		[1, 10, 11],
-	],
-	[
-		[5, 4, 7],
-		[1, 2, 10],
-	],
-	[
-		[8, 3, 0],
-		[5, 4, 7],
-		[1, 2, 10],
-	],
-	[
-		[9, 0, 2],
-		[9, 2, 10],
-		[5, 4, 7],
-	],
-	[
-		[2, 10, 9],
-		[2, 9, 3],
-		[3, 9, 4],
-		[3, 4, 7],
-	],
-	[
-		[4, 7, 5],
-		[3, 1, 2],
-		[3, 2, 11],
-	],
-	[
-		[0, 2, 4],
-		[4, 2, 7],
-		[2, 11, 7],
-		[1, 2, 4],
-		[0, 4, 1],
-	],
-	[
-		[7, 5, 4],
-		[11, 2, 3],
-		[1, 0, 9],
-	],
-	[
-		[4, 7, 9],
-		[7, 11, 9],
-		[11, 2, 9],
-		[2, 1, 9],
-	],
-	[
-		[5, 4, 7],
-		[10, 1, 2],
-		[8, 3, 11],
-	],
-	[
-		[3, 11, 2],
-		[0, 4, 7],
-		[0, 7, 1],
-		[1, 7, 5],
-	],
-	[
-		[8, 0, 9],
-		[1, 10, 2],
-	],
-	[[1, 10, 2]],
-	[
-		[7, 8, 4],
-		[5, 7, 4],
-	],
-	[
-		[3, 0, 4],
-		[7, 3, 4],
-		[5, 7, 4],
-	],
-	[
-		[1, 9, 0],
-		[5, 7, 4],
-		[8, 7, 5],
-	],
-	[
-		[1, 4, 9],
-		[1, 7, 4],
-		[1, 3, 7],
-	],
-	[
-		[1, 2, 10],
-		[4, 7, 8],
-		[5, 4, 7],
-	],
-	[
-		[4, 3, 0],
-		[4, 7, 3],
-		[5, 4, 7],
-		[1, 2, 10],
-	],
-	[
-		[9, 5, 4],
-		[10, 2, 0],
-		[10, 0, 8],
-		[10, 8, 7],
-		[10, 7, 5],
-	],
-	[
-		[10, 2, 1],
-		[9, 5, 4],
-		[8, 7, 5],
-		[8, 5, 4],
-	],
-	[
-		[8, 4, 7],
-		[11, 2, 3],
-	],
-	[
-		[11, 4, 7],
-		[2, 4, 11],
-		[0, 4, 2],
-	],
-	[
-		[3, 11, 2],
-		[4, 8, 1],
-		[4, 1, 9],
-		[4, 7, 8],
-		[8, 9, 1],
-	],
-	[
-		[1, 4, 11],
-		[1, 9, 4],
-		[2, 11, 4],
-		[7, 11, 9],
-	],
-	[
-		[3, 10, 1],
-		[11, 10, 3],
-		[4, 8, 7],
-		[5, 4, 7],
-	],
-	[
-		[0, 4, 7],
-		[7, 3, 11],
-		[10, 1, 5],
-		[11, 10, 5],
-		[10, 3, 5],
-		[1, 10, 3],
-		[1, 3, 0],
-	],
-	[
-		[0, 9, 3],
-		[3, 9, 11],
-		[11, 9, 10],
-		[5, 4, 8],
-		[8, 7, 5],
-	],
-	[
-		[7, 5, 4],
-		[9, 11, 10],
-		[9, 2, 11],
-		[9, 1, 2],
-	],
-	[
-		[8, 4, 5],
-		[7, 8, 5],
-		[3, 1, 10],
-	],
-	[
-		[1, 10, 3],
-		[3, 10, 7],
-		[7, 10, 5],
-	],
-	[
-		[0, 8, 5],
-		[8, 7, 5],
-		[0, 5, 9],
-		[1, 9, 10],
-	],
-	[
-		[9, 10, 5],
-		[9, 5, 1],
-	],
-	[
-		[5, 7, 4],
-		[4, 8, 3],
-		[4, 3, 1],
-		[4, 1, 5],
-	],
-	[
-		[5, 7, 4],
-		[0, 3, 1],
-		[0, 1, 5],
-	],
-	[
-		[5, 7, 4],
-		[4, 8, 0],
-		[1, 0, 9],
-	],
-	[
-		[1, 5, 9],
-		[5, 7, 1],
-		[7, 3, 1],
-	],
-	[
-		[8, 4, 5],
-		[7, 8, 5],
-		[1, 2, 10],
-	],
-	[
-		[0, 4, 7],
-		[3, 0, 7],
-		[2, 1, 10],
-	],
-	[
-		[10, 8, 0],
-		[10, 4, 8],
-		[9, 4, 10],
-		[2, 10, 0],
-		[4, 5, 10],
-	],
-	[
-		[2, 10, 4],
-		[10, 5, 4],
-		[2, 4, 1],
-	],
-	[
-		[5, 8, 4],
-		[3, 2, 11],
-	],
-	[
-		[0, 5, 2],
-		[5, 4, 2],
-		[4, 11, 2],
-		[3, 11, 2],
-	],
-	[
-		[3, 2, 11],
-		[0, 9, 1],
-		[4, 8, 5],
-	],
-	[
-		[1, 2, 11],
-		[4, 5, 9],
-		[4, 9, 1],
-		[4, 1, 11],
-	],
-	[
-		[3, 10, 1],
-		[11, 10, 3],
-		[8, 5, 4],
-	],
-	[
-		[0, 10, 1],
-		[3, 10, 0],
-		[11, 10, 3],
-		[4, 5, 8],
-	],
-	[
-		[8, 0, 10],
-		[0, 9, 10],
-		[3, 10, 11],
-		[4, 5, 8],
-	],
-	[
-		[10, 4, 5],
-		[9, 4, 10],
-		[11, 10, 9],
-		[1, 9, 10],
-	],
-	[
-		[5, 7, 8],
-		[1, 2, 10],
-	],
-	[
-		[1, 2, 10],
-		[4, 7, 5],
-		[0, 3, 8],
-	],
-	[
-		[10, 9, 2],
-		[9, 0, 2],
-		[4, 7, 5],
-		[8, 7, 4],
-	],
-	[
-		[4, 5, 7],
-		[2, 10, 9],
-		[3, 2, 9],
-		[1, 3, 9],
-	],
-	[
-		[8, 5, 7],
-		[2, 3, 10],
-		[11, 10, 3],
-		[10, 1, 3],
-	],
-	[
-		[1, 10, 2],
-		[0, 11, 3],
-		[0, 5, 11],
-		[0, 4, 5],
-	],
-	[
-		[3, 8, 0],
-		[5, 10, 2],
-		[5, 2, 11],
-		[5, 11, 3],
-	],
-	[
-		[11, 5, 2],
-		[10, 5, 11],
-		[1, 2, 5],
-	],
-	[
-		[5, 8, 7],
-		[1, 3, 2],
-	],
-	[
-		[2, 3, 0],
-		[1, 2, 5],
-		[3, 5, 7],
-		[3, 7, 5],
-	],
-	[
-		[0, 7, 8],
-		[0, 1, 7],
-		[2, 7, 5],
-		[1, 2, 5],
-	],
-	[
-		[1, 2, 5],
-		[2, 7, 5],
-		[3, 7, 2],
-	],
-	[
-		[3, 2, 11],
-		[5, 8, 7],
-		[1, 5, 2],
-	],
-	[
-		[2, 11, 3],
-		[1, 2, 0],
-		[0, 2, 5],
-	],
-	[
-		[3, 8, 7],
-		[5, 2, 11],
-		[5, 11, 3],
-	],
-	[
-		[11, 2, 5],
-		[1, 5, 2],
-	],
-	[
-		[5, 8, 9],
-		[5, 7, 8],
-		[3, 2, 11],
-	],
-	[
-		[0, 9, 2],
-		[9, 5, 2],
-		[11, 2, 7],
-		[7, 5, 2],
-	],
-	[
-		[0, 3, 8],
-		[1, 2, 11],
-	],
-	[[1, 2, 11]],
-	[
-		[9, 7, 8],
-		[9, 5, 7],
-		[10, 1, 2],
-	],
-	[
-		[10, 1, 2],
-		[0, 9, 5],
-		[0, 5, 7],
-		[0, 7, 3],
-	],
-	[
-		[8, 0, 2],
-		[8, 2, 5],
-		[8, 5, 7],
-		[10, 2, 1],
-	],
-	[
-		[2, 10, 1],
-		[2, 1, 5],
-		[2, 5, 3],
-		[3, 5, 7],
-	],
-	[
-		[7, 9, 5],
-		[7, 8, 9],
-		[3, 2, 11],
-	],
-	[
-		[9, 2, 0],
-		[9, 7, 2],
-		[5, 7, 9],
-		[11, 2, 7],
-	],
-	[
-		[0, 3, 8],
-		[1, 2, 11],
-	],
-	[[1, 2, 11]],
-	[
-		[1, 10, 2],
-		[9, 7, 5],
-		[8, 7, 9],
-	],
-	[
-		[10, 2, 1],
-		[0, 9, 5],
-		[3, 0, 5],
-		[3, 5, 7],
-	],
-	[
-		[0, 8, 5],
-		[0, 5, 2],
-		[2, 5, 10],
-		[8, 7, 5],
-	],
-	[
-		[5, 2, 10],
-		[5, 3, 2],
-		[7, 3, 5],
-	],
-	[
-		[9, 5, 8],
-		[5, 7, 8],
-		[3, 2, 11],
-	],
-	[
-		[0, 9, 5],
-		[0, 5, 3],
-		[3, 5, 7],
-		[11, 2, 3],
-	],
-	[
-		[8, 0, 3],
-		[1, 2, 11],
-	],
-	[[1, 2, 11]],
-	[
-		[10, 1, 2],
-		[9, 5, 7],
-		[8, 9, 7],
-	],
-	[
-		[10, 1, 2],
-		[0, 9, 3],
-		[3, 9, 5],
-		[3, 5, 7],
-	],
-	[
-		[10, 8, 2],
-		[8, 0, 2],
-		[5, 7, 9],
-	],
-	[
-		[10, 2, 5],
-		[2, 3, 5],
-		[3, 7, 5],
-	],
-	[
-		[2, 3, 11],
-		[9, 5, 8],
-		[5, 7, 8],
-	],
-	[
-		[2, 3, 11],
-		[0, 9, 5],
-		[5, 7, 0],
-		[7, 3, 0],
-	],
-	[
-		[0, 3, 8],
-		[2, 3, 11],
-	],
-	[[2, 3, 11]],
-];
-
-/**
- * Generates smooth mesh using marching cubes algorithm
+ * Generates smooth mesh using SDF + Marching Cubes (Three.js implementation)
+ *
+ * @param {Array} slices - Array of slice objects { id, height, grid, label }
+ * @param {number} gridSize - Size of each grid (default 20)
+ * @param {number} cellSize - Size of each cell (default 1)
+ * @param {number} inflation - Inflation amount for socket (default 0)
+ * @returns {THREE.BufferGeometry} Smooth mesh geometry
  */
 export function generateLimbGeometrySmooth(
-	frontGrid,
-	sideGrid,
+	slices,
 	gridSize = 20,
 	cellSize = 1,
+	inflation = 0,
 ) {
-	const geometry = new THREE.BufferGeometry();
-	const vertices = [];
-	const indices = [];
-	const vertexMap = new Map();
+	const heightScale = gridSize * cellSize;
 
-	// Edge mapping for marching cubes (12 edges per cube)
-	const edges = [
-		[0, 1],
-		[1, 2],
-		[2, 3],
-		[3, 0], // bottom face edges
-		[4, 5],
-		[5, 6],
-		[6, 7],
-		[7, 4], // top face edges
-		[0, 4],
-		[1, 5],
-		[2, 6],
-		[3, 7], // vertical edges
-	];
+	// Step 1: Build occupied voxels using the common function
+	const voxelMap = buildOccupiedVoxels(slices, gridSize, heightScale);
 
-	// Check if voxel is occupied
-	const isOccupied = (y, x, z) => {
-		if (
-			y < 0 ||
-			y >= gridSize ||
-			x < 0 ||
-			x >= gridSize ||
-			z < 0 ||
-			z >= gridSize
-		)
-			return false;
-		const frontActive = frontGrid[gridSize - y]?.[x];
-		const sideActive = sideGrid[gridSize - y]?.[z];
-		return frontActive && sideActive;
-	};
+	if (voxelMap.size === 0) {
+		const geometry = new THREE.BufferGeometry();
+		geometry.setAttribute(
+			"position",
+			new THREE.BufferAttribute(new Float32Array([0, 0, 0]), 3),
+		);
+		return geometry;
+	}
 
-	// Add vertex to geometry
-	const addVertex = (y, x, z) => {
-		const key = `${y},${x},${z}`;
-		if (!vertexMap.has(key)) {
-			const vx = (x - gridSize / 2) * cellSize * 0.5;
-			const vy = y * cellSize * 0.5;
-			const vz = -(z - gridSize / 2) * cellSize * 0.5;
-			vertices.push(vx, vy, vz);
-			vertexMap.set(key, vertices.length / 3 - 1);
-		}
-		return vertexMap.get(key);
-	};
+	// Find bounds of voxels (with padding for marching cubes)
+	const voxels = Array.from(voxelMap.values());
+	let minY = Infinity,
+		maxY = -Infinity;
+	let minRow = Infinity,
+		maxRow = -Infinity;
+	let minCol = Infinity,
+		maxCol = -Infinity;
 
-	// Process each cube
-	for (let y = 0; y < gridSize - 1; y++) {
-		for (let x = 0; x < gridSize - 1; x++) {
-			for (let z = 0; z < gridSize - 1; z++) {
-				// Get the 8 corner values for this cube
-				const corners = [
-					isOccupied(y, x, z),
-					isOccupied(y, x + 1, z),
-					isOccupied(y + 1, x + 1, z),
-					isOccupied(y + 1, x, z),
-					isOccupied(y, x, z + 1),
-					isOccupied(y, x + 1, z + 1),
-					isOccupied(y + 1, x + 1, z + 1),
-					isOccupied(y + 1, x, z + 1),
-				];
+	for (const v of voxels) {
+		minY = Math.min(minY, v.y);
+		maxY = Math.max(maxY, v.y);
+		minRow = Math.min(minRow, v.row);
+		maxRow = Math.max(maxRow, v.row);
+		minCol = Math.min(minCol, v.col);
+		maxCol = Math.max(maxCol, v.col);
+	}
 
-				// Calculate cube index
-				let cubeIndex = 0;
-				for (let i = 0; i < 8; i++) {
-					if (corners[i]) cubeIndex |= 1 << i;
+	// Add padding to ensure marching cubes can close the surface
+	const padding = 3;
+	minRow = Math.max(0, minRow - padding);
+	maxRow = Math.min(gridSize - 1, maxRow + padding);
+	minCol = Math.max(0, minCol - padding);
+	maxCol = Math.min(gridSize - 1, maxCol + padding);
+	const yPadding = (maxY - minY) * 0.2;
+	minY -= yPadding;
+	maxY += yPadding;
+
+	const yRange = maxY - minY || 1;
+	const rowRange = maxRow - minRow || 1;
+	const colRange = maxCol - minCol || 1;
+
+	// Step 2: Use Three.js MarchingCubes with setCell
+	const resolution = 32;
+	const dummyMaterial = new THREE.MeshBasicMaterial();
+	const mc = new MarchingCubes(resolution, dummyMaterial, true, true, 100000);
+
+	// Three.js MC: values > isolation are "inside"
+	// We set isolation to a threshold, and fill field with distance-based values
+	mc.isolation = inflation;
+	mc.reset();
+
+	// Normalize Y to be in similar scale as row/col for distance calculation
+	const yToGridScale = Math.max(rowRange, colRange) / yRange;
+
+	// Fill the field using setCell
+	for (let iz = 0; iz < resolution; iz++) {
+		for (let iy = 0; iy < resolution; iy++) {
+			for (let ix = 0; ix < resolution; ix++) {
+				// Map grid coordinates to voxel space
+				const voxelCol = minCol + (ix / (resolution - 1)) * colRange;
+				const voxelY = minY + (iy / (resolution - 1)) * yRange;
+				const voxelRow = minRow + (iz / (resolution - 1)) * rowRange;
+
+				// Find distance to nearest occupied voxel
+				let minDist = Infinity;
+				for (const v of voxels) {
+					const dx = voxelCol - v.col;
+					const dy = (voxelY - v.y) * yToGridScale;
+					const dz = voxelRow - v.row;
+					const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+					minDist = Math.min(minDist, dist);
 				}
 
-				// Skip if fully inside or fully outside
-				if (cubeIndex === 0 || cubeIndex === 255) continue;
+				// Convert distance to field value
+				// High value = inside, low value = outside
+				// Shell thickness of ~2 grid units
+				const shellThickness = 2.0;
+				const fieldValue = shellThickness - minDist;
 
-				// Corner coordinates
-				const cornerCoords = [
-					[y, x, z],
-					[y, x + 1, z],
-					[y + 1, x + 1, z],
-					[y + 1, x, z],
-					[y, x, z + 1],
-					[y, x + 1, z + 1],
-					[y + 1, x + 1, z + 1],
-					[y + 1, x, z + 1],
-				];
-
-				// Create vertices at edge intersections
-				const edgeVertices = [];
-				for (let e = 0; e < edges.length; e++) {
-					const [c1, c2] = edges[e];
-					// Only create vertex if edge crosses surface
-					if (corners[c1] !== corners[c2]) {
-						const [y1, x1, z1] = cornerCoords[c1];
-						const [y2, x2, z2] = cornerCoords[c2];
-						// Place vertex at midpoint of edge
-						edgeVertices[e] = addVertex(
-							(y1 + y2) / 2,
-							(x1 + x2) / 2,
-							(z1 + z2) / 2,
-						);
-					}
-				}
-
-				// Use marching cubes lookup table to create triangles
-				const triangles = MARCHING_CUBES_TABLE[cubeIndex];
-				for (const tri of triangles) {
-					let validTriangle = true;
-					const triIndices = [];
-
-					for (const edgeIdx of tri) {
-						if (edgeVertices[edgeIdx] === undefined) {
-							validTriangle = false;
-							break;
-						}
-						triIndices.push(edgeVertices[edgeIdx]);
-					}
-
-					if (validTriangle && triIndices.length === 3) {
-						indices.push(...triIndices);
-					}
-				}
+				mc.setCell(ix, iy, iz, fieldValue);
 			}
 		}
 	}
 
-	if (vertices.length === 0) vertices.push(0, 0, 0);
+	// Generate geometry
+	mc.update();
+	const mcGeometry = mc.geometry.clone();
 
-	geometry.setAttribute(
-		"position",
-		new THREE.BufferAttribute(new Float32Array(vertices), 3),
-	);
-	if (indices.length > 0)
-		geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
-	geometry.computeVertexNormals();
+	// Compute world scale and offset
+	// MC outputs in [-1, 1] range (span of 2), so divide by 2
+	// Voxel positions use cellSize * 0.5 factor
+	const worldScaleX = (colRange * cellSize * 0.5) / 2;
+	const worldScaleY = yRange / 2;
+	const worldScaleZ = (rowRange * cellSize * 0.5) / 2;
+	// Offset maps MC center (0) to world center
+	const worldOffsetX = ((minCol + maxCol) / 2 - gridSize / 2) * cellSize * 0.5;
+	const worldOffsetY = (minY + maxY) / 2;
+	const worldOffsetZ = ((minRow + maxRow) / 2 - gridSize / 2) * cellSize * 0.5;
 
-	return geometry;
+	// Transform vertices from MC space [-1,1] to world space
+	const positions = mcGeometry.getAttribute("position");
+	if (!positions) {
+		const geometry = new THREE.BufferGeometry();
+		geometry.setAttribute(
+			"position",
+			new THREE.BufferAttribute(new Float32Array([0, 0, 0]), 3),
+		);
+		return geometry;
+	}
+
+	const vertices = positions.array;
+	for (let i = 0; i < vertices.length; i += 3) {
+		// MC outputs in [-1, 1] range, transform to world coordinates
+		vertices[i] = vertices[i] * worldScaleX + worldOffsetX;
+		vertices[i + 1] = vertices[i + 1] * worldScaleY + worldOffsetY;
+		vertices[i + 2] = vertices[i + 2] * worldScaleZ + worldOffsetZ;
+	}
+
+	mcGeometry.computeVertexNormals();
+
+	return mcGeometry;
 }
