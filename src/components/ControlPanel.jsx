@@ -1,4 +1,6 @@
 import useStore from "../stores/useStore";
+import { generateSocket } from "../utils/socketGeometry";
+import { generateLimbGeometrySmooth } from "../utils/limbGeometry";
 
 function ControlPanel() {
 	const primitives = useStore((state) => state.primitives);
@@ -13,6 +15,13 @@ function ControlPanel() {
 	const setInflation = useStore((state) => state.setInflation);
 	const smoothNormals = useStore((state) => state.smoothNormals);
 	const setSmoothNormals = useStore((state) => state.setSmoothNormals);
+	const slices = useStore((state) => state.slices);
+	const socket = useStore((state) => state.socket);
+	const setSocket = useStore((state) => state.setSocket);
+	const socketThickness = useStore((state) => state.socketThickness);
+	const setSocketThickness = useStore((state) => state.setSocketThickness);
+	const socketUseConvexHull = useStore((state) => state.socketUseConvexHull);
+	const setSocketUseConvexHull = useStore((state) => state.setSocketUseConvexHull);
 
 	const selectedPrimitive = primitives.find(
 		(p) => p.id === selectedPrimitiveId,
@@ -41,6 +50,29 @@ function ControlPanel() {
 	const handleOperationChange = (operation) => {
 		if (!selectedPrimitive) return;
 		updatePrimitive(selectedPrimitive.id, { operation });
+	};
+
+	const handleGenerateSocket = () => {
+		try {
+			// Generate the smooth limb geometry first
+			const limbGeometry = generateLimbGeometrySmooth(slices, 20, 1, inflation, smoothNormals);
+			if (!limbGeometry || !limbGeometry.getAttribute("position")) {
+				console.warn("No limb geometry to generate socket from");
+				return;
+			}
+			// Generate the socket
+			const socketGeometry = generateSocket(
+				limbGeometry,
+				socketThickness,
+				socketUseConvexHull,
+				primitives
+			);
+			if (socketGeometry) {
+				setSocket(socketGeometry);
+			}
+		} catch (error) {
+			console.error("Error generating socket:", error);
+		}
 	};
 
 	return (
@@ -108,6 +140,47 @@ function ControlPanel() {
 								<span className="text-sm text-gray-600">Smooth Lighting</span>
 							</label>
 						</div>
+					)}
+				</div>
+			</div>
+
+			<div>
+				<h3 className="font-semibold text-gray-700 mb-2">Socket</h3>
+				<div className="space-y-3">
+					<button
+						onClick={handleGenerateSocket}
+						className="w-full px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded text-sm font-medium transition"
+					>
+						Generate Socket
+					</button>
+					<div>
+						<div className="flex justify-between items-center mb-1">
+							<label className="text-sm text-gray-600">Thickness</label>
+							<span className="text-sm font-medium text-gray-700">
+								{socketThickness.toFixed(1)}
+							</span>
+						</div>
+						<input
+							type="range"
+							min="0.1"
+							max="2"
+							step="0.1"
+							value={socketThickness}
+							onChange={(e) => setSocketThickness(parseFloat(e.target.value))}
+							className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer"
+						/>
+					</div>
+					<label className="flex items-center gap-2 cursor-pointer">
+						<input
+							type="checkbox"
+							checked={socketUseConvexHull}
+							onChange={(e) => setSocketUseConvexHull(e.target.checked)}
+							className="w-4 h-4 rounded"
+						/>
+						<span className="text-sm text-gray-600">Use Convex Hull</span>
+					</label>
+					{socket && (
+						<p className="text-sm text-green-600 font-medium">Socket generated</p>
 					)}
 				</div>
 			</div>

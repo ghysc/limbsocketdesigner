@@ -112,6 +112,7 @@ function Scene() {
 	const generatedMesh = useStore((state) => state.generatedMesh);
 	const primitives = useStore((state) => state.primitives);
 	const selectedPrimitiveId = useStore((state) => state.selectedPrimitiveId);
+	const socket = useStore((state) => state.socket);
 
 	// Display final mesh if available, otherwise show generated mesh
 	const displayMesh = finalMesh || generatedMesh;
@@ -129,6 +130,17 @@ function Scene() {
 			{displayMesh && (
 				<mesh geometry={displayMesh}>
 					<meshStandardMaterial color="#3b82f6" />
+				</mesh>
+			)}
+
+			{/* Socket mesh */}
+			{socket && (
+				<mesh geometry={socket}>
+					<meshStandardMaterial
+						color="#808080"
+						metalness={0.3}
+						roughness={0.5}
+					/>
 				</mesh>
 			)}
 

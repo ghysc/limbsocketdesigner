@@ -15,9 +15,10 @@ const useStore = create((set) => ({
 		{ id: 3, height: 0.25, grid: createEmptyGrid(), label: "Extremity" },
 	],
 
-	// Update a cell in a specific slice
+	// Update a cell in a specific slice (also clears socket as topology changes)
 	setSliceCell: (sliceId, row, col, value) =>
 		set((state) => ({
+			socket: null, // Clear socket when grid changes
 			slices: state.slices.map((slice) =>
 				slice.id === sliceId
 					? {
@@ -30,9 +31,10 @@ const useStore = create((set) => ({
 			),
 		})),
 
-	// Clear a specific slice
+	// Clear a specific slice (also clears socket)
 	clearSlice: (sliceId) =>
 		set((state) => ({
+			socket: null, // Clear socket when grid changes
 			slices: state.slices.map((slice) =>
 				slice.id === sliceId ? { ...slice, grid: createEmptyGrid() } : slice,
 			),
@@ -49,6 +51,17 @@ const useStore = create((set) => ({
 	// Smooth normals for better lighting
 	smoothNormals: true,
 	setSmoothNormals: (value) => set({ smoothNormals: value }),
+
+	// Socket generation
+	socket: null,
+	setSocket: (geometry) => set({ socket: geometry }),
+	clearSocket: () => set({ socket: null }),
+
+	socketThickness: 0.5,
+	setSocketThickness: (value) => set({ socketThickness: value }),
+
+	socketUseConvexHull: true,
+	setSocketUseConvexHull: (value) => set({ socketUseConvexHull: value }),
 
 	// 3D Mesh data
 	generatedMesh: null,
