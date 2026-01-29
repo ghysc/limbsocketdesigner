@@ -50,12 +50,21 @@ function Primitive({ primitive, isSelected }) {
 				{primitive.type === "cylinder" && (
 					<cylinderGeometry args={[0.5, 0.5, 1, 32]} />
 				)}
-				<meshStandardMaterial
-					color={isSelected ? "#fbbf24" : "#10b981"}
-					transparent
-					opacity={0.7}
-					wireframe={primitive.operation === "subtract"}
-				/>
+				{/* Material based on operation type */}
+				{primitive.operation === "subtract" ? (
+					<meshStandardMaterial
+						color={isSelected ? "#fbbf24" : "#ef4444"}
+						transparent
+						opacity={0.3}
+						side={THREE.DoubleSide}
+					/>
+				) : (
+					<meshStandardMaterial
+						color={isSelected ? "#fbbf24" : "#808080"}
+						metalness={0.3}
+						roughness={0.5}
+					/>
+				)}
 			</mesh>
 			{isSelected && (
 				<TransformControls

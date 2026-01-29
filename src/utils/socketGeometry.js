@@ -23,9 +23,9 @@ function extractPointsFromGeometry(geometry) {
 }
 
 /**
- * Shrink points toward the centroid by a given amount
+ * Expand points outward from the centroid by a given amount
  */
-function shrinkPoints(points, amount) {
+function expandPoints(points, amount) {
 	// Calculate centroid
 	const centroid = new THREE.Vector3();
 	for (const p of points) {
@@ -33,10 +33,10 @@ function shrinkPoints(points, amount) {
 	}
 	centroid.divideScalar(points.length);
 
-	// Shrink each point toward centroid
+	// Expand each point away from centroid
 	return points.map((p) => {
 		const dir = new THREE.Vector3().subVectors(p, centroid).normalize();
-		return new THREE.Vector3().copy(p).sub(dir.multiplyScalar(amount));
+		return new THREE.Vector3().copy(p).add(dir.multiplyScalar(amount));
 	});
 }
 
@@ -92,9 +92,13 @@ function createPrimitiveMesh(primitive) {
 /**
  * Generate a socket from the limb geometry
  *
+ * The socket is generated so that:
+ * - Inner surface = limb surface (touches the limb)
+ * - Outer surface = inner surface + thickness
+ *
  * @param {THREE.BufferGeometry} limbGeometry - The smooth limb geometry
  * @param {number} thickness - Wall thickness in world units
- * @param {boolean} useConvexHull - Whether to use convex hull for outer surface
+ * @param {boolean} useConvexHull - Whether to use convex hull for smoother surface
  * @param {Array} primitives - Array of primitives for CSG operations
  * @returns {THREE.BufferGeometry} The socket geometry
  */
@@ -116,23 +120,22 @@ export function generateSocket(
 		return null;
 	}
 
-	// 2. Create outer surface
-	let outerGeometry;
-	if (useConvexHull) {
-		outerGeometry = new ConvexGeometry(points);
-	} else {
-		outerGeometry = limbGeometry.clone();
-	}
-
-	// 3. Create inner surface (shrunk for wall thickness)
-	const innerPoints = shrinkPoints(points, thickness);
+	// 2. Create inner surface (matches the limb exactly)
 	let innerGeometry;
 	if (useConvexHull) {
-		innerGeometry = new ConvexGeometry(innerPoints);
+		innerGeometry = new ConvexGeometry(points);
 	} else {
-		// For non-convex, shrink the geometry
-		const shrunkPoints = shrinkPoints(points, thickness);
-		innerGeometry = new ConvexGeometry(shrunkPoints);
+		innerGeometry = limbGeometry.clone();
+	}
+
+	// 3. Create outer surface (expanded outward by thickness)
+	const outerPoints = expandPoints(points, thickness);
+	let outerGeometry;
+	if (useConvexHull) {
+		outerGeometry = new ConvexGeometry(outerPoints);
+	} else {
+		// For non-convex, we still use convex hull for outer to ensure valid mesh
+		outerGeometry = new ConvexGeometry(outerPoints);
 	}
 
 	// 4. Create meshes for CSG
@@ -153,12 +156,17 @@ export function generateSocket(
 	bbox.getSize(bboxSize);
 
 	// Create a large box to cut the top
-	const cutBoxSize = Math.max(bboxSize.x, bboxSize.z) * 2;
-	const cutBoxGeometry = new THREE.BoxGeometry(cutBoxSize, cutBoxSize, cutBoxSize);
+	// Position it so the BOTTOM of the box is at topY (cutting everything above)
+	const cutBoxSize = Math.max(bboxSize.x, bboxSize.z) * 3;
+	const cutBoxHeight = Math.max(bboxSize.y, 10);
+	const cutBoxGeometry = new THREE.BoxGeometry(cutBoxSize, cutBoxHeight, cutBoxSize);
 	const cutMesh = new THREE.Mesh(cutBoxGeometry, dummyMaterial);
+
+	// Position the cut box so its bottom is at topY - small offset to cut cleanly
+	const cutOffset = 0.05; // Small offset below top to ensure clean cut
 	cutMesh.position.set(
 		(bbox.min.x + bbox.max.x) / 2,
-		topY + cutBoxSize / 2 - 0.1, // Slightly below top to ensure clean cut
+		topY + cutBoxHeight / 2 - cutOffset,
 		(bbox.min.z + bbox.max.z) / 2,
 	);
 	cutMesh.updateMatrix();
