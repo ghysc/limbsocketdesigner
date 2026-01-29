@@ -285,12 +285,13 @@ export function generateLimbGeometrySmooth(
 	}
 
 	// Add padding to ensure marching cubes can close the surface
-	const padding = 3;
-	minRow = Math.max(0, minRow - padding);
-	maxRow = Math.min(gridSize - 1, maxRow + padding);
-	minCol = Math.max(0, minCol - padding);
-	maxCol = Math.min(gridSize - 1, maxCol + padding);
-	const yPadding = (maxY - minY) * 0.2;
+	// Padding must be > shellThickness (2.0) to ensure surface closes properly
+	const padding = 4;
+	minRow -= padding; // No clamping - allow SDF to extend beyond grid
+	maxRow += padding;
+	minCol -= padding;
+	maxCol += padding;
+	const yPadding = Math.max((maxY - minY) * 0.3, 3); // At least 3 units
 	minY -= yPadding;
 	maxY += yPadding;
 
