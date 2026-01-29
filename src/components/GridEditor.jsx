@@ -2,32 +2,19 @@ import { useState, useRef } from "react";
 import useStore from "../stores/useStore";
 import { getConvexHull, fillPolygon } from "../utils/convexHull";
 
-function GridEditor({ title, gridType }) {
-	const grid = useStore((state) =>
-		gridType === "front" ? state.frontGrid : state.sideGrid,
-	);
-	const setGridCell = useStore((state) => state.setGridCell);
-	const clearGrid = useStore((state) => state.clearGrid);
+function GridEditor({ slice }) {
+	const setSliceCell = useStore((state) => state.setSliceCell);
+	const clearSlice = useStore((state) => state.clearSlice);
 
 	const [isDrawing, setIsDrawing] = useState(false);
-	const [drawMode] = useState(true);
 	const drawnPointsRef = useRef([]);
-	const previousCellsRef = useRef([]);
 
-	const updateConvexShape = (points, shouldFill) => {
-		// Clear previous cells
-		previousCellsRef.current.forEach((cell) => {
-			setGridCell(gridType, cell.row, cell.col, false);
-		});
-
-		if (points.length === 0) {
-			previousCellsRef.current = [];
-			return;
-		}
+	const updateConvexShape = (points) => {
+		if (points.length === 0) return;
 
 		// Collect all cells that are currently true in the grid
 		const allTrueCells = [];
-		grid.forEach((row, rowIndex) => {
+		slice.grid.forEach((row, rowIndex) => {
 			row.forEach((cell, colIndex) => {
 				if (cell) {
 					allTrueCells.push({ row: rowIndex, col: colIndex });
@@ -38,44 +25,25 @@ function GridEditor({ title, gridType }) {
 		// Combine with newly drawn points
 		const combinedPoints = [...allTrueCells, ...points];
 
-		if (combinedPoints.length === 0) {
-			previousCellsRef.current = [];
-			return;
-		}
+		if (combinedPoints.length === 0) return;
 
-		// Find leftmost and rightmost points
-		let minCol = Infinity;
-		let maxCol = -Infinity;
-		combinedPoints.forEach((p) => {
-			minCol = Math.min(minCol, p.col);
-			maxCol = Math.max(maxCol, p.col);
-		});
-
-		// Add points that extend to top of grid (row 0)
-		const extendedPoints = [...combinedPoints];
-		extendedPoints.push({ row: 0, col: minCol });
-		extendedPoints.push({ row: 0, col: maxCol });
-
-		// Compute convex hull with extended points
-		const hull = getConvexHull(extendedPoints);
+		// Compute convex hull (NO extension to top anymore)
+		const hull = getConvexHull(combinedPoints);
 
 		// Fill the convex polygon
 		const filledCells = fillPolygon(hull, 20);
 
-		// Update grid
+		// Update grid - always fill (no erasing)
 		filledCells.forEach((cell) => {
-			setGridCell(gridType, cell.row, cell.col, shouldFill);
+			setSliceCell(slice.id, cell.row, cell.col, true);
 		});
-
-		previousCellsRef.current = filledCells;
 	};
 
 	const handleMouseDown = (row, col) => {
-		const currentValue = grid[row][col];
-		//setDrawMode(!currentValue);
+		// Always draw, never erase
 		setIsDrawing(true);
 		drawnPointsRef.current = [{ row, col }];
-		updateConvexShape(drawnPointsRef.current, !currentValue);
+		updateConvexShape(drawnPointsRef.current);
 	};
 
 	const handleMouseEnter = (row, col) => {
@@ -84,30 +52,31 @@ function GridEditor({ title, gridType }) {
 			drawnPointsRef.current.push({ row, col });
 
 			// Update convex shape
-			updateConvexShape(drawnPointsRef.current, drawMode);
+			updateConvexShape(drawnPointsRef.current);
 		}
 	};
 
 	const handleMouseUp = () => {
 		setIsDrawing(false);
 		drawnPointsRef.current = [];
-		previousCellsRef.current = [];
 	};
 
 	const handleMouseLeave = () => {
 		setIsDrawing(false);
 		drawnPointsRef.current = [];
-		previousCellsRef.current = [];
 	};
 
 	return (
 		<div className="flex flex-col">
 			<div className="bg-gray-700 rounded-t-lg px-2 py-1 flex justify-between items-center">
-				<h3 className="font-semibold text-white text-sm">
-					{title} of the limb
-				</h3>
+				<div>
+					<h3 className="font-semibold text-white text-sm">{slice.label}</h3>
+					<span className="text-xs text-gray-400">
+						Hauteur: {Math.round(slice.height * 100)}%
+					</span>
+				</div>
 				<button
-					onClick={() => clearGrid(gridType)}
+					onClick={() => clearSlice(slice.id)}
 					className="text-xs px-3 py-1.5 bg-gray-600 hover:bg-gray-500 text-white rounded"
 				>
 					Clear
@@ -121,7 +90,7 @@ function GridEditor({ title, gridType }) {
 					onDragStart={(e) => e.preventDefault()}
 					style={{ userSelect: "none" }}
 				>
-					{grid.map((row, rowIndex) => (
+					{slice.grid.map((row, rowIndex) => (
 						<div key={rowIndex} className="flex">
 							{row.map((cell, colIndex) => (
 								<div

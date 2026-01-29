@@ -7,25 +7,36 @@ const createEmptyGrid = () => {
 };
 
 const useStore = create((set) => ({
-	// 2D Grid data
-	frontGrid: createEmptyGrid(),
-	sideGrid: createEmptyGrid(),
+	// Slices data (from top of residual limb to extremity)
+	slices: [
+		{ id: 0, height: 0.75, grid: createEmptyGrid(), label: "Haut" },
+		{ id: 1, height: 0.5, grid: createEmptyGrid(), label: "Milieu-haut" },
+		{ id: 2, height: 0.25, grid: createEmptyGrid(), label: "Milieu-bas" },
+		{ id: 3, height: 0, grid: createEmptyGrid(), label: "Extrémité" },
+	],
 
-	// Update grid cell
-	setGridCell: (gridType, row, col, value) =>
-		set((state) => {
-			const grid = gridType === "front" ? "frontGrid" : "sideGrid";
-			const newGrid = state[grid].map((r, i) =>
-				i === row ? r.map((c, j) => (j === col ? value : c)) : [...r],
-			);
-			return { [grid]: newGrid };
-		}),
+	// Update a cell in a specific slice
+	setSliceCell: (sliceId, row, col, value) =>
+		set((state) => ({
+			slices: state.slices.map((slice) =>
+				slice.id === sliceId
+					? {
+							...slice,
+							grid: slice.grid.map((r, i) =>
+								i === row ? r.map((c, j) => (j === col ? value : c)) : [...r],
+							),
+						}
+					: slice,
+			),
+		})),
 
-	// Clear grid
-	clearGrid: (gridType) =>
-		set({
-			[gridType === "front" ? "frontGrid" : "sideGrid"]: createEmptyGrid(),
-		}),
+	// Clear a specific slice
+	clearSlice: (sliceId) =>
+		set((state) => ({
+			slices: state.slices.map((slice) =>
+				slice.id === sliceId ? { ...slice, grid: createEmptyGrid() } : slice,
+			),
+		})),
 
 	// Limb settings
 	limbVisibility: "voxel", // 'none', 'voxel', 'smooth'

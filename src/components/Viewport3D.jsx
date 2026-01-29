@@ -3,10 +3,7 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Grid, TransformControls } from "@react-three/drei";
 import * as THREE from "three";
 import useStore from "../stores/useStore";
-import {
-	generateLimbGeometry,
-	generateLimbGeometrySmooth,
-} from "../utils/limbGeometry";
+import { generateLimbGeometry } from "../utils/limbGeometry";
 
 function Primitive({ primitive, isSelected }) {
 	const meshRef = useRef();
@@ -69,44 +66,24 @@ function Primitive({ primitive, isSelected }) {
 }
 
 function LimbMesh() {
-	const frontGrid = useStore((state) => state.frontGrid);
-	const sideGrid = useStore((state) => state.sideGrid);
+	const slices = useStore((state) => state.slices);
 	const limbVisibility = useStore((state) => state.limbVisibility);
 	const [geometry, setGeometry] = useState(null);
-	const isMountedRef = useRef(true);
 
 	useEffect(() => {
-		const generateGeometry = async () => {
-			try {
-				let newGeometry = null;
+		try {
+			let newGeometry = null;
 
-				if (limbVisibility !== "none") {
-					if (limbVisibility === "smooth") {
-						newGeometry = generateLimbGeometrySmooth(
-							frontGrid,
-							sideGrid,
-							20,
-							1,
-						);
-					} else {
-						newGeometry = generateLimbGeometry(frontGrid, sideGrid, 20, 1);
-					}
-				}
-				setGeometry(newGeometry);
-			} catch (error) {
-				console.error("Error generating limb geometry:", error);
-				if (isMountedRef.current) {
-					setGeometry(null);
-				}
+			if (limbVisibility !== "none") {
+				// Generate voxel geometry from slices
+				newGeometry = generateLimbGeometry(slices, 20, 1);
 			}
-		};
-
-		generateGeometry();
-
-		return () => {
-			isMountedRef.current = false;
-		};
-	}, [frontGrid, sideGrid, limbVisibility]);
+			setGeometry(newGeometry);
+		} catch (error) {
+			console.error("Error generating limb geometry:", error);
+			setGeometry(null);
+		}
+	}, [slices, limbVisibility]);
 
 	if (!geometry) return null;
 
