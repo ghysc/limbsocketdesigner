@@ -21,7 +21,6 @@ function ControlPanel() {
 	const socketThickness = useStore((state) => state.socketThickness);
 	const setSocketThickness = useStore((state) => state.setSocketThickness);
 	const socketUseConvexHull = useStore((state) => state.socketUseConvexHull);
-	const setSocketUseConvexHull = useStore((state) => state.setSocketUseConvexHull);
 
 	const selectedPrimitive = primitives.find(
 		(p) => p.id === selectedPrimitiveId,
@@ -55,7 +54,13 @@ function ControlPanel() {
 	const handleGenerateSocket = () => {
 		try {
 			// Generate the smooth limb geometry first
-			const limbGeometry = generateLimbGeometrySmooth(slices, 20, 1, inflation, smoothNormals);
+			const limbGeometry = generateLimbGeometrySmooth(
+				slices,
+				20,
+				1,
+				inflation,
+				smoothNormals,
+			);
 			if (!limbGeometry || !limbGeometry.getAttribute("position")) {
 				console.warn("No limb geometry to generate socket from");
 				return;
@@ -65,7 +70,7 @@ function ControlPanel() {
 				limbGeometry,
 				socketThickness,
 				socketUseConvexHull,
-				primitives
+				primitives,
 			);
 			if (socketGeometry) {
 				setSocket(socketGeometry);
@@ -170,17 +175,10 @@ function ControlPanel() {
 							className="w-full h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer"
 						/>
 					</div>
-					<label className="flex items-center gap-2 cursor-pointer">
-						<input
-							type="checkbox"
-							checked={socketUseConvexHull}
-							onChange={(e) => setSocketUseConvexHull(e.target.checked)}
-							className="w-4 h-4 rounded"
-						/>
-						<span className="text-sm text-gray-600">Use Convex Hull</span>
-					</label>
 					{socket && (
-						<p className="text-sm text-green-600 font-medium">Socket generated</p>
+						<p className="text-sm text-green-600 font-medium">
+							Socket generated
+						</p>
 					)}
 				</div>
 			</div>

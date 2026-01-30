@@ -72,7 +72,7 @@ function GridEditor({ slice }) {
 				<div>
 					<h3 className="font-semibold text-white text-sm">{slice.label}</h3>
 					<span className="text-xs text-gray-400">
-						Hauteur: {Math.round(slice.height * 100)}%
+						Height: {Math.round(slice.height * 100)}%
 					</span>
 				</div>
 				<button
