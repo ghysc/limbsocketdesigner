@@ -19,8 +19,8 @@ function Header() {
 			<div className="text-sm text-gray-300 mt-2">
 				<strong>Note:</strong> This prototype runs on CPU only. Generating
 				smooth limb or socket meshes can take some time (up to a minute for
-				complex shapes). Boolean operations are not rendered dynamically —
-				thanks for your patience!
+				complex shapes). Boolean operations are not rendered dynamically. Thank
+				for your patience!
 			</div>
 		</header>
 	);
