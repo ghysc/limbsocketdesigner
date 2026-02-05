@@ -1,5 +1,5 @@
-varying vec3 vPosition;
-varying vec3 vWorldPosition;
+out vec3 vPosition;
+out vec3 vWorldPosition;
 
 void main() {
     vPosition = position;
