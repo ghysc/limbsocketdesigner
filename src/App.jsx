@@ -3,6 +3,7 @@ import GridEditor from "./components/GridEditor";
 import Viewport3D from "./components/Viewport3D";
 import ControlPanel from "./components/ControlPanel";
 import useStore from "./stores/useStore";
+import ViewportRaymarching from "./components/ViewportRaymarching";
 
 function App() {
 	const slices = useStore((state) => state.slices);
@@ -22,7 +23,7 @@ function App() {
 
 					{/* Center column: 3D Viewport */}
 					<div className="col-span-7">
-						<Viewport3D />
+						<ViewportRaymarching />
 					</div>
 
 					{/* Right column: Control Panel */}

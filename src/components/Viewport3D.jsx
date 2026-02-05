@@ -91,7 +91,13 @@ function LimbMesh() {
 			}
 
 			if (limbVisibility === "smooth") {
-				return generateLimbGeometrySmooth(slices, 20, 1, inflation, smoothNormals);
+				return generateLimbGeometrySmooth(
+					slices,
+					20,
+					1,
+					inflation,
+					smoothNormals,
+				);
 			}
 
 			// Default: voxel mode
