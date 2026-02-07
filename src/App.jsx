@@ -1,6 +1,5 @@
 import Header from "./components/Header";
-import GridEditor from "./components/GridEditor";
-import Viewport3D from "./components/Viewport3D";
+import SplineEditor from "./components/SplineEditor";
 import ControlPanel from "./components/ControlPanel";
 import useStore from "./stores/useStore";
 import ViewportRaymarching from "./components/ViewportRaymarching";
@@ -12,12 +11,12 @@ function App() {
 		<div className="h-screen bg-gray-800 flex flex-col overflow-hidden">
 			<Header />
 
-			<main className="flex-1  p-4 overflow-hidden">
+			<main className="flex-1 p-4 overflow-hidden">
 				<div className="grid grid-cols-12 gap-4 h-full">
-					{/* Left column: Grid editors (scrollable) */}
+					{/* Left column: Spline editors (scrollable) */}
 					<div className="col-span-3 flex flex-col gap-4 overflow-y-auto pr-2">
 						{slices.map((slice) => (
-							<GridEditor key={slice.id} slice={slice} />
+							<SplineEditor key={slice.id} slice={slice} />
 						))}
 					</div>
 

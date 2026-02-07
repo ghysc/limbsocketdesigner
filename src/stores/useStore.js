@@ -1,84 +1,146 @@
 import { create } from "zustand";
+import {
+	NUM_CONTROL_POINTS,
+	DEFAULT_RADIUS_MM,
+	DEFAULT_LIMB_HEIGHT_MM,
+} from "../config";
 
-const createEmptyGrid = () => {
-	return Array(20)
-		.fill(null)
-		.map(() => Array(20).fill(false));
+// Seeded pseudo-random for reproducible organic shapes
+function seededRandom(seed) {
+	let s = seed;
+	return () => {
+		s = (s * 16807 + 0) % 2147483647;
+		return (s - 1) / 2147483646;
+	};
+}
+
+const createDefaultControlPoints = (radius = DEFAULT_RADIUS_MM) => {
+	const step = 360 / NUM_CONTROL_POINTS;
+	return Array.from({ length: NUM_CONTROL_POINTS }, (_, i) => ({
+		angle: i * step,
+		radius,
+	}));
+};
+
+// Organic shape: slightly oval, with random variation per point
+const createOrganicControlPoints = (baseRadius, ovalRatio, seed) => {
+	const step = 360 / NUM_CONTROL_POINTS;
+	const rand = seededRandom(seed);
+	return Array.from({ length: NUM_CONTROL_POINTS }, (_, i) => {
+		const angle = i * step;
+		const rad = (angle * Math.PI) / 180;
+		// Oval: wider on the medial-lateral axis (X), narrower anterior-posterior (Z)
+		const ovalFactor = 1 + (ovalRatio - 1) * Math.abs(Math.cos(rad));
+		// Random organic variation ±8%
+		const noise = 1 + (rand() - 0.5) * 0.16;
+		return { angle, radius: baseRadius * ovalFactor * noise };
+	});
 };
 
 const useStore = create((set) => ({
 	// Slices data (from top of residual limb to extremity)
+	// Anatomically: top is widest, tapers toward extremity
 	slices: [
-		{ id: 0, height: 1, grid: createEmptyGrid(), label: "Top" },
-		{ id: 1, height: 0.75, grid: createEmptyGrid(), label: "Mid-top" },
-		{ id: 2, height: 0.5, grid: createEmptyGrid(), label: "Mid-bottom" },
-		{ id: 3, height: 0.25, grid: createEmptyGrid(), label: "Extremity" },
+		{
+			id: 0,
+			heightMM: DEFAULT_LIMB_HEIGHT_MM,
+			controlPoints: createOrganicControlPoints(55, 1.1, 42),
+			label: "Top",
+		},
+		{
+			id: 1,
+			heightMM: DEFAULT_LIMB_HEIGHT_MM * 0.75,
+			controlPoints: createOrganicControlPoints(50, 1.08, 137),
+			label: "Mid-top",
+		},
+		{
+			id: 2,
+			heightMM: DEFAULT_LIMB_HEIGHT_MM * 0.5,
+			controlPoints: createOrganicControlPoints(42, 1.05, 256),
+			label: "Mid-bottom",
+		},
+		{
+			id: 3,
+			heightMM: DEFAULT_LIMB_HEIGHT_MM * 0.25,
+			controlPoints: createOrganicControlPoints(30, 1.02, 391),
+			label: "Extremity",
+		},
 	],
 
-	// Update a cell in a specific slice (also clears socket as topology changes)
-	setSliceCell: (sliceId, row, col, value) =>
+	// Update a control point radius in a specific slice
+	setControlPointRadius: (sliceId, pointIndex, radius) =>
 		set((state) => ({
-			socket: null, // Clear socket when grid changes
+			socket: null,
 			slices: state.slices.map((slice) =>
 				slice.id === sliceId
 					? {
 							...slice,
-							grid: slice.grid.map((r, i) =>
-								i === row ? r.map((c, j) => (j === col ? value : c)) : [...r],
+							controlPoints: slice.controlPoints.map((cp, i) =>
+								i === pointIndex ? { ...cp, radius } : cp,
 							),
 						}
 					: slice,
 			),
 		})),
 
-	// Clear a specific slice (also clears socket)
+	// Reset a specific slice to default circle
 	clearSlice: (sliceId) =>
 		set((state) => ({
-			socket: null, // Clear socket when grid changes
+			socket: null,
 			slices: state.slices.map((slice) =>
-				slice.id === sliceId ? { ...slice, grid: createEmptyGrid() } : slice,
+				slice.id === sliceId
+					? { ...slice, controlPoints: createDefaultControlPoints() }
+					: slice,
 			),
 		})),
 
-	// Limb settings
-	limbVisibility: "voxel", // 'none', 'voxel', 'smooth'
-	setLimbVisibility: (visibility) => set({ limbVisibility: visibility }),
+	// Add a new slice
+	addSlice: (heightMM, label) =>
+		set((state) => {
+			const maxId = Math.max(...state.slices.map((s) => s.id), -1);
+			return {
+				socket: null,
+				slices: [
+					...state.slices,
+					{
+						id: maxId + 1,
+						heightMM,
+						controlPoints: createDefaultControlPoints(),
+						label: label || `Slice ${maxId + 2}`,
+					},
+				].sort((a, b) => b.heightMM - a.heightMM),
+			};
+		}),
 
-	// Inflation for smooth mode (socket creation)
-	inflation: 0,
-	setInflation: (value) => set({ inflation: value }),
-
-	// Smooth normals for better lighting
-	smoothNormals: true,
-	setSmoothNormals: (value) => set({ smoothNormals: value }),
+	// Remove a slice
+	removeSlice: (sliceId) =>
+		set((state) => ({
+			socket: null,
+			slices: state.slices.filter((s) => s.id !== sliceId),
+		})),
 
 	// Socket generation
 	socket: null,
 	setSocket: (geometry) => set({ socket: geometry }),
 	clearSocket: () => set({ socket: null }),
 
-	socketThickness: 0.5,
+	socketThickness: 3, // mm
 	setSocketThickness: (value) => set({ socketThickness: value }),
 
-	socketUseConvexHull: true,
-	setSocketUseConvexHull: (value) => set({ socketUseConvexHull: value }),
-
-	// 3D Mesh data
-	generatedMesh: null,
-	setGeneratedMesh: (mesh) => set({ generatedMesh: mesh }),
+	blendRadius: 5, // mm, smooth boolean blend radius
+	setBlendRadius: (value) => set({ blendRadius: value }),
 
 	// Primitives for CSG operations
 	primitives: [],
 	selectedPrimitiveId: null,
 
-	// Add primitive
 	addPrimitive: (type) =>
 		set((state) => {
 			const newPrimitive = {
 				id: `${type}-${Date.now()}`,
 				type,
 				position: [0, 0, 0],
-				scale: [1, 1, 1],
+				scale: [10, 10, 10], // mm
 				operation: "union",
 			};
 			return {
@@ -87,7 +149,6 @@ const useStore = create((set) => ({
 			};
 		}),
 
-	// Update primitive
 	updatePrimitive: (id, updates) =>
 		set((state) => ({
 			primitives: state.primitives.map((p) =>
@@ -95,7 +156,6 @@ const useStore = create((set) => ({
 			),
 		})),
 
-	// Delete primitive
 	deletePrimitive: (id) =>
 		set((state) => ({
 			primitives: state.primitives.filter((p) => p.id !== id),
@@ -103,12 +163,7 @@ const useStore = create((set) => ({
 				state.selectedPrimitiveId === id ? null : state.selectedPrimitiveId,
 		})),
 
-	// Select primitive
 	setSelectedPrimitive: (id) => set({ selectedPrimitiveId: id }),
-
-	// Final mesh after CSG operations
-	finalMesh: null,
-	setFinalMesh: (mesh) => set({ finalMesh: mesh }),
 }));
 
 export default useStore;
